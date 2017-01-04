@@ -84,13 +84,11 @@ int controlKey; // 0-ctrl 1-shift 2-alt 3-gui  // simdilik bir ise yaramiyor
 
 int controlKeyChecked = 0; // iki kez calisan fonksiyon icin
 
-int shiftControl = 0; // boolean yapmalisin bu 5 tane degiskeni
+int shiftControl = 0;
 int ctrlControl = 0;
 int altControl = 0;
 int guiControl = 0;
 
-//unsigned long eskiZaman=0;
-//unsigned long yeniZaman;
 int eskiZaman = 0;
 int yeniZaman;
 
@@ -110,6 +108,8 @@ boolean left_guiEnabled;
 int pastKeyChecked = 0;
 
 int specialKapa = 0;
+
+boolean combinePress = 0;
 
 class KbdRptParser : public KeyboardReportParser
 {
@@ -322,8 +322,8 @@ void KbdRptParser::OnSpecial(uint8_t key)
 
     SPECIAL_eskiZaman = millis();
 
-    if (controlKeyChecked == 0 || (pastKeyChecked == 2 && controlKeyChecked == 1)) // ya kombiansyon yokken yada hem varken ve tus kombinasyonu daha oncesinden yapilmisken
-      // buradaki controlKeyChecked == 1 ifadesi gereksiz olabilir cunku zaten patKeyChecked izfadesi == 2 bunun olamsiyla oluyor
+    if (controlKeyChecked == 0 || (pastKeyChecked == 2 && controlKeyChecked == 1)) // ya kombinasyon yokken yada hem varken ve tus kombinasyonu daha oncesinden yapilmisken
+      // buradaki controlKeyChecked == 1 ifadesi gereksiz olabilir cunku zaten pastKeyChecked ifadesi == 2 bunun olamsiyla oluyor
     {
 
       switch (key) // ozel tus kontrolu ve yazdirilmasi
@@ -445,6 +445,7 @@ void loop() {
 
   //const char *msg = "hello";
 
+
   if (tut == 0) {
     yeniZaman = millis();  // tusa basilirsa zamani kaydet
   }
@@ -461,6 +462,8 @@ void loop() {
   combineKeyWrite();
   fingerUp();
   combineElse();
+  debug();
+
 }
 
 void bluetoothData() {
@@ -805,12 +808,15 @@ void fingerUp() {
 
 void combineElse() {
 
-  if ((ctrlControl == 1 || altControl == 1 || shiftControl == 1 || guiControl == 1) && tut == 0) {
+
+  if ((ctrlControl == 1 || altControl == 1 || shiftControl == 1 || guiControl == 1) && tut == 0 && combinePress == 0)  { // burasi hatali, ilk basimda eski lastbutton geliyor
 
     Keyboard.press(lastButton);
     Serial.println(lastButton);
+    combinePress = 1;
     delay(45);
   }
+
 
   if ((ctrlControl == 1 || altControl == 1 || shiftControl == 1 || guiControl == 1) && special_tut == 1 && SPECIAL_yeniZaman - SPECIAL_eskiZaman > 500) {
 
@@ -836,6 +842,13 @@ void combineElse() {
   // normal veya ozel tusa kombinasyonlar bastik ama sonra normal veya ozel tusa basmayi kestik ama kombiansyon tusuan hala basili tutuyoruz
   if (pastKeyChecked == 1 && (tut == 1 && special_tut == 0) && controlKeyChecked == 1) {
     pastKeyChecked = 2;
+    combinePress = 0;
   }
 
 }
+
+void debug() {
+
+
+}
+
