@@ -12,6 +12,10 @@
 #include <SPI.h>
 #endif
 
+//eeprom
+#include <Wire.h>
+#define disk1 0x50
+
 #define leftCtrl KEY_LEFT_CTRL
 #define rightCtrl KEY_RIGHT_CTRL
 #define leftAlt KEY_LEFT_ALT
@@ -419,13 +423,15 @@ void setup()
   Serial.begin( 115200 );
   BT_1.begin(9600);
   Keyboard.begin();
+  Wire.begin();
+
+  unsigned int address = 0;
 
   pinMode(4, INPUT_PULLUP);
 
 #if !defined(__MIPSEL__)
   while (Serial); // (while (!Serial))Wait for serial port to connect - used on Leonardo, Teensy and other boards with built-in USB CDC serial connection
 #endif
-
 
   Serial.println("Start");
 
@@ -445,7 +451,6 @@ void loop() {
 
   //const char *msg = "hello";
 
-
   if (tut == 0) {
     yeniZaman = millis();  // tusa basilirsa zamani kaydet
   }
@@ -462,7 +467,6 @@ void loop() {
   combineKeyWrite();
   fingerUp();
   combineElse();
-  debug();
 
 }
 
@@ -624,7 +628,6 @@ void keyboardWrite() {
     blueCommit = 0;
   }
 
-
 }
 
 void mouseWrite() {
@@ -750,10 +753,8 @@ void fingerUp() {
   if (ctrlControl == 2) { // ctrl tusundan parmagimizi cektik
 
     ctrlControl = 0; // tekrar icin gerekli
-
     left_ctrlEnabled = 0;
     right_ctrlEnabled = 0;
-
     Keyboard.release(leftCtrl);
     Keyboard.release(rightCtrl);
   }
@@ -761,10 +762,8 @@ void fingerUp() {
   if (altControl == 2) { // alt tusundan parmagimizi cektik
 
     altControl  = 0; // tekrar icin gerekli
-
     left_altEnabled = 0;
     right_altEnabled = 0;
-
     Keyboard.release(leftAlt);
     Keyboard.release(rightAlt);
   }
@@ -772,10 +771,8 @@ void fingerUp() {
   if (shiftControl == 2) { // shift tusundan parmagimizi cektik
 
     shiftControl = 0; // tekrar icin gerekli
-
     left_shiftEnabled = 0;
     right_shiftEnabled = 0;
-
     Keyboard.release(leftShift);
     Keyboard.release(rightShift);
   }
@@ -783,10 +780,8 @@ void fingerUp() {
   if (guiControl == 2) { // gui tusundan parmagimizi cektik
 
     guiControl = 0; // tekrar icin gerekli
-
     left_guiEnabled = 0;
     right_guiEnabled = 0;
-
     Keyboard.release(leftGUI);
     Keyboard.release(rightGUI);
   }
@@ -796,7 +791,6 @@ void fingerUp() {
 
     Keyboard.release(lastButton);
   }
-
 
   // kombinasyon icin bastigimiz ozel tustan parmagimizi cektik
   if ((ctrlControl == 1 || altControl == 1 || shiftControl == 1 || guiControl == 1) && special_tut == 1  || ((ctrlControl == 0 || altControl == 0 || shiftControl == 0 || guiControl == 0) && special_tut == 1)) {
@@ -808,7 +802,6 @@ void fingerUp() {
 
 void combineElse() {
 
-
   if ((ctrlControl == 1 || altControl == 1 || shiftControl == 1 || guiControl == 1) && tut == 0 && combinePress == 0)  { // burasi hatali, ilk basimda eski lastbutton geliyor
 
     Keyboard.press(lastButton);
@@ -816,7 +809,6 @@ void combineElse() {
     combinePress = 1;
     delay(45);
   }
-
 
   if ((ctrlControl == 1 || altControl == 1 || shiftControl == 1 || guiControl == 1) && special_tut == 1 && SPECIAL_yeniZaman - SPECIAL_eskiZaman > 500) {
 
@@ -844,11 +836,32 @@ void combineElse() {
     pastKeyChecked = 2;
     combinePress = 0;
   }
-
 }
 
-void debug() {
+void writeEEPROM(int deviceaddress, unsigned int eeaddress, byte data )
+{
+  Wire.beginTransmission(deviceaddress);
+  Wire.write((int)(eeaddress >> 8));   // MSB
+  Wire.write((int)(eeaddress & 0xFF)); // LSB
+  Wire.write(data);
+  Wire.endTransmission();
 
+  delay(5);
+}
 
+byte readEEPROM(int deviceaddress, unsigned int eeaddress )
+{
+  byte rdata = 0xFF;
+
+  Wire.beginTransmission(deviceaddress);
+  Wire.write((int)(eeaddress >> 8));   // MSB
+  Wire.write((int)(eeaddress & 0xFF)); // LSB
+  Wire.endTransmission();
+
+  Wire.requestFrom(deviceaddress, 1);
+
+  if (Wire.available()) rdata = Wire.read();
+
+  return rdata;
 }
 
